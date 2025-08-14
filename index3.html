@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocabulary Matching Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes bounce {
+            0%, 20%, 53%, 80%, 100% { transform: translate3d(0,0,0); }
+            40%, 43% { transform: translate3d(0, -30px, 0); }
+            70% { transform: translate3d(0, -15px, 0); }
+            90% { transform: translate3d(0, -4px, 0); }
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes confetti {
+            0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+        }
+        
+        .bounce { animation: bounce 0.6s ease-in-out; }
+        .pulse { animation: pulse 0.3s ease-in-out; }
+        .confetti { animation: confetti 1s ease-out forwards; }
+        
+        .dragging { opacity: 0.7; transform: rotate(5deg); }
+        .drop-zone { transition: all 0.3s ease; }
+        .drop-zone.drag-over { background-color: #fef3c7; border-color: #f59e0b; transform: scale(1.02); }
+        .matched { background: linear-gradient(135deg, #10b981, #059669); color: white; }
+        .hint-glow { box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-purple-400 via-pink-400 to-red-400 min-h-screen p-4">
+    <div class="max-w-6xl mx-auto">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-white mb-2">🎯 Enlish Vocabulary Match</h1>
+            <p class="text-white/90 text-lg">Drag terms to their matching definitions!</p>
+            <div class="mt-4 flex justify-center items-center gap-4">
+                <div class="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
+                    <span class="text-white font-semibold">Score: <span id="score">0</span>/6</span>
+                </div>
+                <button id="hintBtn" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105">
+                    💡 Hint
+                </button>
+                <button id="resetBtn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition-all duration-200 transform hover:scale-105">
+                    🔄 Reset
+                </button>
+            </div>
+        </div>
+
+        <!-- Game Area -->
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- Terms Column -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
+                <h2 class="text-2xl font-bold text-white mb-4 text-center">📚 Terms</h2>
+                <div id="termsContainer" class="space-y-3">
+                    <!-- Terms will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Definitions Column -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
+                <h2 class="text-2xl font-bold text-white mb-4 text-center">📖 Definitions</h2>
+                <div id="definitionsContainer" class="space-y-3">
+                    <!-- Definitions will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Celebration Area -->
+        <div id="celebration" class="fixed inset-0 pointer-events-none z-50"></div>
+    </div>
+
+    <script>
+        const vocabulary = [
+            { term: "Butter", definition: "A yellow dairy product made from milk", color: "bg-red-500" },
+            { term: "Teacher", definition: "A person who teaches students", color: "bg-blue-500" },
+            { term: "Cat", definition: "A pet that says “meow”", color: "bg-green-500" },
+            { term: "Blue", definition: "Color of the sky on a clear day", color: "bg-purple-500" },
+            { term: "Lion", definition: "A large wild animal with a mane", color: "bg-orange-500" },
+            { term: "Fish", definition: "An animal that lives in water, eaten as food", color: "bg-pink-500" }
+        ];
+
+        let score = 0;
+        let matches = new Set();
+        let hintsUsed = 0;
+
+        function shuffleArray(array) {
+            const shuffled = [...array];
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
+            return shuffled;
+        }
+
+        function initializeGame() {
+            const termsContainer = document.getElementById('termsContainer');
+            const definitionsContainer = document.getElementById('definitionsContainer');
+            
+            // Clear containers
+            termsContainer.innerHTML = '';
+            definitionsContainer.innerHTML = '';
+            
+            // Shuffle terms and definitions separately
+            const shuffledTerms = shuffleArray(vocabulary);
+            const shuffledDefinitions = shuffleArray(vocabulary);
+            
+            // Create term elements
+            shuffledTerms.forEach((item, index) => {
+                const termElement = document.createElement('div');
+                termElement.className = `${item.color} text-white p-4 rounded-lg cursor-move font-semibold text-center transition-all duration-200 hover:scale-105 shadow-lg`;
+                termElement.draggable = true;
+                termElement.textContent = item.term;
+                termElement.dataset.term = item.term;
+                
+                termElement.addEventListener('dragstart', handleDragStart);
+                termElement.addEventListener('dragend', handleDragEnd);
+                
+                termsContainer.appendChild(termElement);
+            });
+            
+            // Create definition elements
+            shuffledDefinitions.forEach((item, index) => {
+                const defElement = document.createElement('div');
+                defElement.className = 'bg-white/20 backdrop-blur-sm text-white p-4 rounded-lg border-2 border-dashed border-white/30 drop-zone transition-all duration-200 hover:bg-white/30';
+                defElement.innerHTML = `<div class="font-medium">${item.definition}</div>`;
+                defElement.dataset.term = item.term;
+                
+                defElement.addEventListener('dragover', handleDragOver);
+                defElement.addEventListener('drop', handleDrop);
+                defElement.addEventListener('dragleave', handleDragLeave);
+                
+                definitionsContainer.appendChild(defElement);
+            });
+        }
+
+        function handleDragStart(e) {
+            e.dataTransfer.setData('text/plain', e.target.dataset.term);
+            e.target.classList.add('dragging');
+        }
+
+        function handleDragEnd(e) {
+            e.target.classList.remove('dragging');
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            const draggedTerm = e.dataTransfer.getData('text/plain');
+            const targetTerm = e.currentTarget.dataset.term;
+            
+            e.currentTarget.classList.remove('drag-over');
+            
+            if (draggedTerm === targetTerm && !matches.has(draggedTerm)) {
+                // Correct match!
+                matches.add(draggedTerm);
+                score++;
+                document.getElementById('score').textContent = score;
+                
+                // Mark as matched
+                e.currentTarget.classList.add('matched', 'bounce');
+                const termElement = document.querySelector(`[data-term="${draggedTerm}"]`);
+                termElement.classList.add('matched', 'bounce');
+                termElement.draggable = false;
+                
+                // Create celebration effect
+                createCelebration(e.currentTarget);
+                
+                // Check if game is complete
+                if (score === vocabulary.length) {
+                    setTimeout(() => {
+                        createGameCompleteAnimation();
+                    }, 500);
+                }
+            } else {
+                // Wrong match - shake animation
+                e.currentTarget.classList.add('pulse');
+                setTimeout(() => {
+                    e.currentTarget.classList.remove('pulse');
+                }, 300);
+            }
+        }
+
+        function createCelebration(element) {
+            const rect = element.getBoundingClientRect();
+            const celebration = document.getElementById('celebration');
+            
+            // Create confetti particles
+            for (let i = 0; i < 10; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'absolute w-3 h-3 confetti';
+                particle.style.left = (rect.left + rect.width / 2) + 'px';
+                particle.style.top = (rect.top + rect.height / 2) + 'px';
+                particle.style.backgroundColor = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57'][Math.floor(Math.random() * 5)];
+                particle.style.transform = `translateX(${(Math.random() - 0.5) * 100}px)`;
+                
+                celebration.appendChild(particle);
+                
+                setTimeout(() => {
+                    particle.remove();
+                }, 1000);
+            }
+        }
+
+        function createGameCompleteAnimation() {
+            const celebration = document.getElementById('celebration');
+            celebration.innerHTML = `
+                <div class="flex items-center justify-center h-full">
+                    <div class="bg-white rounded-2xl p-8 text-center shadow-2xl bounce">
+                        <div class="text-6xl mb-4">🎉</div>
+                        <h2 class="text-3xl font-bold text-gray-800 mb-2">Congratulations!</h2>
+                        <p class="text-gray-600 mb-4">You matched all geometry terms correctly!</p>
+                        <p class="text-sm text-gray-500">Hints used: ${hintsUsed}</p>
+                        <button onclick="resetGame()" class="mt-4 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-6 rounded-lg transition-all duration-200 transform hover:scale-105">
+                            Play Again
+                        </button>
+                    </div>
+                </div>
+            `;
+            celebration.classList.remove('pointer-events-none');
+            
+            setTimeout(() => {
+                celebration.classList.add('pointer-events-none');
+                celebration.innerHTML = '';
+            }, 5000);
+        }
+
+        function showHint() {
+            hintsUsed++;
+            const unmatchedTerms = vocabulary.filter(item => !matches.has(item.term));
+            
+            if (unmatchedTerms.length === 0) return;
+            
+            const randomTerm = unmatchedTerms[Math.floor(Math.random() * unmatchedTerms.length)];
+            const termElement = document.querySelector(`[data-term="${randomTerm.term}"]`);
+            const defElement = document.querySelector(`[data-term="${randomTerm.term}"].drop-zone`);
+            
+            // Highlight the term and definition
+            termElement.classList.add('hint-glow');
+            defElement.classList.add('hint-glow');
+            
+            setTimeout(() => {
+                termElement.classList.remove('hint-glow');
+                defElement.classList.remove('hint-glow');
+            }, 2000);
+        }
+
+        function resetGame() {
+            score = 0;
+            matches.clear();
+            hintsUsed = 0;
+            document.getElementById('score').textContent = '0';
+            document.getElementById('celebration').innerHTML = '';
+            document.getElementById('celebration').classList.add('pointer-events-none');
+            initializeGame();
+        }
+
+        // Event listeners
+        document.getElementById('hintBtn').addEventListener('click', showHint);
+        document.getElementById('resetBtn').addEventListener('click', resetGame);
+
+        // Initialize the game
+        initializeGame();
+    </script>
+<script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'96ec75cdd6d14079',t:'MTc1NTEzMjY0OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
